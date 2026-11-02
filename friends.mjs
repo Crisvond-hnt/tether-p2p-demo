@@ -323,7 +323,7 @@ async function runAsk (question, { raw = false, predict = 160 } = {}) {
     const cached = await weightsCached()
     console.log(cached
       ? 'aside   Qwen3 0.6B Q4, already on this machine'
-      : 'aside   Qwen3 0.6B Q4. First run fetches about 382 MB into experiments/.qvac')
+      : 'aside   Qwen3 0.6B Q4. First run fetches about 382 MB into .qvac/')
   }
   let lastPct = -1
   const content = raw
