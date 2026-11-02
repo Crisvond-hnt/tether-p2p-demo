@@ -135,7 +135,7 @@ You get an `0x` address, two word counts, and the line `same phrase false`. The 
 | `tmp/` | Session files and the phrases. Git ignores this |
 | `.qvac/` | The weights. Git ignores this |
 
-Those three gold files are the same bytes an agent copies when it installs the skill:
+Those three gold files are the room, the vault, and the address. The skill copies each one when the app needs it, and it also carries the QVAC worker and the Holesail path. The skill is for composing an app, not for repeating this sitting:
 
 ```sh
 npx skills add Crisvond-hnt/tether-p2p
