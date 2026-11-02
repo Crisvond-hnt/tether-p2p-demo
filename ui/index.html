@@ -128,8 +128,30 @@
   button.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--friend); outline-offset: 2px; }
   .err { color: #f0b0a0; min-height: 1.2em; margin: 8px 0 0; }
+  .lobby, .desk { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .lobby[hidden], .desk[hidden] { display: none; }
+  .desk { flex: 1; }
+  .lead { margin: 0; color: var(--quiet); }
+  .pieces { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .piece { background: var(--panel); border-radius: 12px; padding: 10px 12px; }
+  .piece b { display: block; font-size: 16px; }
+  .piece i { font-style: normal; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--quiet); }
+  .piece.ready i, .piece.live i { color: var(--friend); }
+  .piece span { display: block; color: var(--quiet); font-size: 14px; margin-top: 4px; }
+  .share textarea, .lobby textarea {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    background: var(--paper);
+    color: var(--paper-ink);
+    font: 14px/1.4 ui-monospace, "SFMono-Regular", monospace;
+    padding: 12px 14px;
+    resize: vertical;
+  }
+  .legend { color: var(--quiet); font-size: 15px; margin: 0; }
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; }
   @media (max-width: 640px) {
-    .card { grid-template-columns: 1fr; }
+    .card, .pieces { grid-template-columns: 1fr; }
     .wire { display: none; }
   }
 </style>
@@ -147,21 +169,37 @@
       <div><span>Person</span><strong id="person">…</strong></div>
       <div class="span"><span>Address</span><strong id="address">…</strong></div>
     </div>
-    <p class="status" id="status">Starting the private link on this computer.</p>
-    <div class="thread" id="thread"><p class="empty">The thread is empty. Write the first line.</p></div>
-    <div class="note" id="note" hidden></div>
-    <div class="aside" id="aside"></div>
-    <form id="composer">
-      <input id="text" name="text" autocomplete="off" placeholder="Write a line" aria-label="Write a line">
-      <button type="submit">Send</button>
-      <button type="button" id="noteBtn" class="quiet">Save note</button>
-      <button type="button" id="askBtn" class="quiet">Ask this machine</button>
-    </form>
-    <p class="err" id="err" role="status"></p>
-    <form id="actions">
+    <p class="status" id="status">Loading the keys on this machine.</p>
+    <section class="lobby" id="lobby" hidden>
+      <p class="lead">You and a friend each run this on your own computer. Start a thread, send the code, and they paste it. The thread stays between your two machines. This window has to stay open while you are talking.</p>
+      <button type="button" id="startFriend">Start a thread with a friend</button>
+      <form id="joinForm" class="stack">
+        <textarea id="code" rows="3" placeholder="Paste a friend’s code" aria-label="Paste a friend’s code"></textarea>
+        <button type="submit">Join with a code</button>
+      </form>
+      <button type="button" id="hereBtn" class="quiet">Try both sides on this computer</button>
+    </section>
+    <section class="desk" id="desk" hidden>
+      <div class="pieces" id="pieces"></div>
+      <div class="share" id="shareBox" hidden>
+        <p class="lead">Send this to one person. They install the same repo, run <b>npm start</b>, and paste it. The code opens the thread and the note. Anyone who has it can write.</p>
+        <textarea id="share" rows="3" readonly aria-label="Code for a friend"></textarea>
+        <button type="button" id="copyBtn">Copy code</button>
+      </div>
+      <div class="thread" id="thread"></div>
+      <div class="note" id="note" hidden></div>
+      <div class="aside" id="aside"></div>
+      <form id="composer">
+        <input id="text" name="text" autocomplete="off" placeholder="Write a line" aria-label="Write a line">
+        <button type="submit">Send</button>
+        <button type="button" id="noteBtn" class="quiet">Save note</button>
+        <button type="button" id="askBtn" class="quiet">Ask this machine</button>
+      </form>
+      <p class="legend">Identity is a Keet key. The thread is a Hypercore with two writers. The note is an Autopass vault. The address is a separate WDK seed. Ask runs Qwen on this machine through QVAC, and the answer stays here. Next build: <b>npx skills add Crisvond-hnt/tether-p2p</b></p>
       <button type="button" id="friendBtn">Open the other window</button>
-      <button type="button" id="quitBtn" class="quiet">Quit</button>
-    </form>
+    </section>
+    <p class="err" id="err" role="status"></p>
+    <button type="button" id="quitBtn" class="quiet">Quit</button>
   </div>
 <script>
 const role = document.getElementById('role')
@@ -175,25 +213,43 @@ const err = document.getElementById('err')
 const wire = document.getElementById('wire')
 const friendBtn = document.getElementById('friendBtn')
 const text = document.getElementById('text')
+const lobby = document.getElementById('lobby')
+const desk = document.getElementById('desk')
+const shareBox = document.getElementById('shareBox')
+const share = document.getElementById('share')
+const pieces = document.getElementById('pieces')
+let focused = false
 
 function paint (state) {
-  document.title = (state.role === 'friend' ? 'Friend' : 'You') + ' · Tether P2P'
-  role.textContent = state.role === 'friend' ? 'Friend’s window' : 'Your window'
+  const choosing = state.phase === 'choose'
+  document.title = (state.title || 'Tether P2P')
+  role.textContent = state.title || 'Tether P2P'
   person.textContent = state.person || '…'
   address.textContent = state.address || '…'
   status.textContent = state.status || ''
   wire.classList.toggle('live', !!state.live)
+  lobby.hidden = !choosing
+  desk.hidden = choosing
   friendBtn.hidden = !state.canOpenFriend
+  if (state.share) {
+    shareBox.hidden = false
+    if (share.value !== state.share) share.value = state.share
+  } else {
+    shareBox.hidden = true
+  }
+  paintPieces(state.pieces)
   note.hidden = !state.note
   note.innerHTML = state.note ? '<b>Note.</b> ' + escapeHtml(state.note) : ''
-  thread.innerHTML = ''
+  thread.replaceChildren()
   if (!state.lines || !state.lines.length) {
     const p = document.createElement('p')
     p.className = 'empty'
-    p.textContent = state.writable
-      ? 'The thread is empty. Write the first line.'
-      : 'Waiting until this window can write.'
-    thread.appendChild(p)
+    p.textContent = choosing
+      ? ''
+      : state.writable
+        ? 'The thread is empty. Write the first line.'
+        : 'Waiting until this window can write.'
+    if (p.textContent) thread.appendChild(p)
   } else {
     for (const line of state.lines) {
       const div = document.createElement('div')
@@ -202,6 +258,28 @@ function paint (state) {
       thread.appendChild(div)
     }
     thread.scrollTop = thread.scrollHeight
+  }
+  if (!focused) {
+    focused = true
+    if (choosing) document.getElementById('startFriend').focus()
+    else text.focus()
+  }
+}
+
+function paintPieces (items) {
+  pieces.replaceChildren()
+  const label = { live: 'Live', ready: 'Ready', wait: 'Waiting', idle: 'Here' }
+  for (const item of items || []) {
+    const div = document.createElement('div')
+    div.className = 'piece ' + (item.state || 'idle')
+    const name = document.createElement('b')
+    name.textContent = item.name
+    const state = document.createElement('i')
+    state.textContent = label[item.state] || 'Here'
+    const detail = document.createElement('span')
+    detail.textContent = item.detail
+    div.append(name, state, detail)
+    pieces.appendChild(div)
   }
 }
 
@@ -261,6 +339,36 @@ friendBtn.addEventListener('click', async () => {
   try { await post('/api/friend') } catch (error) { err.textContent = error.message }
 })
 
+document.getElementById('startFriend').addEventListener('click', () => start('friend'))
+document.getElementById('hereBtn').addEventListener('click', () => start('here'))
+document.getElementById('joinForm').addEventListener('submit', (event) => {
+  event.preventDefault()
+  start('join', document.getElementById('code').value)
+})
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  const value = share.value
+  if (!value) return
+  try {
+    await navigator.clipboard.writeText(value)
+    document.getElementById('copyBtn').textContent = 'Copied'
+  } catch {
+    share.focus()
+    share.select()
+  }
+})
+
+async function start (mode, code) {
+  const buttons = [document.getElementById('startFriend'), document.getElementById('hereBtn'), document.querySelector('#joinForm button')]
+  buttons.forEach((button) => { button.disabled = true })
+  try {
+    await post('/api/begin', { mode, code })
+  } catch (error) {
+    err.textContent = error.message
+  } finally {
+    buttons.forEach((button) => { button.disabled = false })
+  }
+}
+
 document.getElementById('quitBtn').addEventListener('click', () => post('/api/quit'))
 
 const events = new EventSource('/api/events')
@@ -272,7 +380,6 @@ events.addEventListener('message', (event) => {
   if (data.type === 'ask-done') refresh()
 })
 refresh()
-text.focus()
 </script>
 </body>
 </html>

@@ -1,8 +1,21 @@
 # Tether P2P
 
-Two windows. One thread. No server in between.
+One install. A code you send to a friend. A thread, a note, an address, and a model on the machine that asked.
 
-`npm start` opens your window. Press **Open the other window** and the friend’s window opens beside it. Type in either one. The line shows up in the other. Save note keeps a private line both windows can read. Ask this machine answers from the thread with a model that stays on this computer.
+```sh
+git clone https://github.com/Crisvond-hnt/tether-p2p-demo.git
+cd tether-p2p-demo
+npm install
+npm start
+```
+
+The window opens on this computer. Press **Start a thread with a friend**. Copy the code and send it to one person. They clone the same repo, run the same two commands, and paste the code. When their window says **You can write**, a line typed on either side shows up on the other.
+
+Save note keeps one private line both of you can read. Ask this machine answers from the thread with a model that stays on the computer that asked. The page is `127.0.0.1`. It is the window. The lines live in a Hypercore. There is no account and no server holding the thread while both windows are closed, so leave yours open while you are talking.
+
+The same code still works the next time you run `npm start` and start the thread again. The phrases stay in `tmp/`, mode `0600`. The window shows a short person key and an `0x` address, and it does not show the phrases.
+
+If you are alone, **Try both sides on this computer** opens a second window on a private link. That pair does not reach a friend on another machine. Two processes on one laptop usually cannot punch a hole through the public network back to themselves, which is why the friend path is the one that leaves the machine.
 
 Keet, Pear, and QVAC are the products this is cut from. Keet is the app with calls, video, and files. Pear is the runtime. QVAC is models on the device. The family page is [tether.io/data](https://tether.io/data/). This repository is the slice that has a `package.json` and runs on a laptop.
 
@@ -18,19 +31,27 @@ npm install
 
 The install is Corestore, Hyperswarm, HyperDHT, Autobase, Hyperbee, Autopass, `keet-identity-key`, a WDK Ethereum wallet, and `@qvac/sdk` 0.23. There is no chat API in that list.
 
-## Two windows
+## What the window is showing
+
+The six labels are the stack, in the order they come up.
+
+| Label | What it is |
+| --- | --- |
+| Identity | A Keet key from `keet-identity-key`. The phrase is not the wallet seed. |
+| Room | A Hypercore log. Both of you write through Autobase. `apply` in `gold/room.cjs` is the reducer, and it is left as it was. |
+| Link | Hyperswarm. With a friend, that is the public DHT. On this computer, it is a local testnet, because hairpinning the public DHT back to yourself usually fails. |
+| Note | An Autopass vault, the same idea PearPass is built on. The code is the invite. |
+| Address | A WDK Ethereum address from a second seed. Nothing is sent. |
+| Model | Qwen3 0.6B Q4 through `@qvac/sdk` 0.23, the first time you press **Ask this machine**. About 382 MB, into `.qvac/`. The answer is not written into the room. |
+
+Your lines sit on the right. The friend’s lines sit on the left. **Quit** closes that window’s process.
+
+The same sitting still runs in a terminal if you want the log:
 
 ```sh
-npm start
+npm run friends -- --cli
+npm run friend -- --cli
 ```
-
-A browser window opens. It shows a short person key, shaped like `abcd…wxyz`, and an `0x` address. The person key comes from a Keet identity phrase. The address comes from a different WDK seed. Neither phrase is shown. They are stored in `tmp/friends-a/secrets.json` at mode `0600`.
-
-Press **Open the other window**. A second window opens for the friend. The first window has to stay open. It is the side the friend connects through. Wait until the friend’s window says `You can write.` Sending before that returns `Not a writer yet.`
-
-The page is served on `127.0.0.1` by the same process that holds the room. It is the window, not a backend. The lines still live in a Hypercore.
-
-Your lines sit on the right. The friend’s lines sit on the left. **Save note** stores one Autopass value. **Ask this machine** reads the thread and the note. **Quit** closes that window’s process.
 
 The same sitting still runs in a terminal if you want the log:
 

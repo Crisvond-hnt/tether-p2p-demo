@@ -13,7 +13,7 @@ export function openBrowser (url) {
   child.unref()
 }
 
-export function serveWindow ({ port, getSnapshot, sendLine, saveNote, askModel, openFriend, quit }) {
+export function serveWindow ({ port, getSnapshot, sendLine, saveNote, askModel, openFriend, begin, quit }) {
   const listeners = new Set()
   const emit = (event) => {
     const chunk = `data: ${JSON.stringify(event)}\n\n`
@@ -56,6 +56,12 @@ export function serveWindow ({ port, getSnapshot, sendLine, saveNote, askModel, 
         askModel(String(body.text || '').trim()).catch((err) => {
           emit({ type: 'ask-error', message: err.message || String(err) })
         })
+        return json(res, 200, { ok: true })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/begin') {
+        if (!begin) return json(res, 400, { error: 'This window cannot start a thread.' })
+        const body = await readBody(req)
+        await begin(body || {})
         return json(res, 200, { ok: true })
       }
       if (req.method === 'POST' && url.pathname === '/api/friend') {
@@ -104,7 +110,7 @@ function readBody (req) {
     let size = 0
     req.on('data', (chunk) => {
       size += chunk.length
-      if (size > 100000) {
+      if (size > 250000) {
         reject(new Error('Message is too long.'))
         req.destroy()
         return
