@@ -5,14 +5,15 @@
  *   node friends.mjs join                    the friend
  *   node friends.mjs --ask "Name one ocean." model only, no swarm
  *
- * Inside the desk: type a line, /note, /ask, /card, /help.
+ * The window is the demo. --cli keeps the readline desk: /note, /ask, /card, /help.
  * Phrases stay in tmp/friends-a|b/secrets.json. This file never prints them.
  */
 import readline from 'node:readline'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promises'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import {
   Corestore,
@@ -31,9 +32,11 @@ import {
   patchJson,
   raceTimeout,
   option,
+  flag,
   mute
 } from './lib.mjs'
 import { ask, asidePrompt, closeAside, modelReady } from './aside.mjs'
+import { openBrowser, serveWindow } from './ui.mjs'
 
 const argv = process.argv.slice(2)
 const isJoin = argv[0] === 'join'
@@ -41,6 +44,12 @@ const sendOnce = option(argv, '--send')
 const noteOnce = option(argv, '--note')
 const untilText = option(argv, '--until')
 const askOnce = option(argv, '--ask')
+const cli = flag(argv, '--cli')
+const lines = []
+let statusText = 'Starting the private link on this computer.'
+let ui = null
+let friendLaunched = false
+let linked = false
 const sessionPath = path.join(tmp, 'friends-session.json')
 const home = path.join(tmp, isJoin ? 'friends-b' : 'friends-a')
 const require = createRequire(import.meta.url)
@@ -82,7 +91,7 @@ async function modelOnly (question) {
 }
 
 async function host () {
-  console.log('Starting a local testnet so both terminals on this machine can find each other.')
+  console.log('Starting a local testnet so both windows on this machine can find each other.')
   testnet = await createTestnet(3)
   const me = await loadMe(home)
   personHex = me.person
@@ -110,29 +119,32 @@ async function host () {
   })
 
   printCard()
+  setStatus('Waiting for the other window.')
   console.log('thread   waiting for a friend')
-  console.log('Other terminal: npm run friends -- join')
-  console.log('Type a line. /note leaves a private note. /ask reads this thread on this machine. /card prints the address. /help lists them.')
 
   watch()
   admitWhenReady().catch(async (err) => {
     if (closed) return
     console.error(err.message || err)
-    await shutdown(1)
+    if (ui || !headless()) setStatus(err.message || 'Still waiting for the other window.')
+    else await shutdown(1)
   })
-  if (untilText) await new Promise(() => {})
-  else await repl()
+  if (!headless()) await showWindow()
+  if (untilText) await stayOpen()
+  else if (headless()) await repl()
+  else await stayOpen()
 }
 
 async function join () {
   const session = await waitUntil(async () => {
     try { return await readJson(sessionPath) } catch { return null }
-  }, 20000, 'no desk yet — start the other terminal first')
+  }, 20000, 'no desk yet — start your window first')
 
   const me = await loadMe(home)
   personHex = me.person
   address = me.address
   printCard()
+  setStatus('Joining your window.')
 
   await rm(path.join(home, 'room'), { recursive: true, force: true })
   await rm(path.join(home, 'vault'), { recursive: true, force: true })
@@ -146,6 +158,7 @@ async function join () {
 
   pairer = pairVault(vaultStore, session.invite, { bootstrap: session.bootstrap })
   const paired = raceTimeout(pairer.finished(), 45000, 'pair timed out after 45s')
+  if (!headless()) await showWindow()
 
   try {
     console.log('joined   ' + short(session.room))
@@ -157,6 +170,7 @@ async function join () {
     }, 20000, 'the desk never admitted this writer')
     pass = await paired
     await pass.ready()
+    setStatus('You can write.')
     console.log('Admitted. You can write.')
 
     if (noteOnce) {
@@ -166,8 +180,9 @@ async function join () {
       }, 20000, 'the other terminal never showed the note')
     }
     if (sendOnce) await sendAndLeave(sendOnce)
-    else if (untilText) await new Promise(() => {})
-    else await repl()
+    else if (untilText) await stayOpen()
+    else if (headless()) await repl()
+    else await stayOpen()
   } finally {
     paired.cancel()
   }
@@ -181,13 +196,14 @@ async function admitWhenReady () {
     } catch {
       return null
     }
-  }, 120000, 'nobody joined')
+  }, headless() ? 120000 : 600000, 'nobody joined')
   if (closed) return
   await waitForPeer()
   if (closed) return
   const s = await readJson(sessionPath)
   console.log('Admitting writer ' + writer.slice(0, 16) + '…')
   await room.admit(writer)
+  setStatus('Friend is in the other window.')
   console.log('friend is here')
   if (s.person) console.log('  person   ' + short(s.person))
 }
@@ -202,6 +218,8 @@ async function waitForPeer () {
   }
   if (closed) return
   if (swarm.connections.size === 0) throw new Error('no swarm connection')
+  linked = true
+  publish()
   console.log('Peer connected.')
 }
 
@@ -218,6 +236,8 @@ function watch () {
           }
           seen.add(value.id)
           const label = value.person === personHex ? 'you' : 'friend'
+          lines.push({ id: value.id, who: label, text: value.text })
+          publish()
           console.log(label.padEnd(8) + value.text)
           if (untilText && value.text === untilText) {
             await shutdown(0)
@@ -225,6 +245,11 @@ function watch () {
           }
         }
         await pollNote()
+        const now = !!(swarm && swarm.connections.size > 0)
+        if (now !== linked) {
+          linked = now
+          publish()
+        }
       } catch (err) {
         if (!closed) console.error('watch', err.message)
       }
@@ -240,6 +265,7 @@ async function pollNote () {
   const value = got && (got.value !== undefined ? got.value : got)
   if (!value || value === lastNote) return
   lastNote = value
+  publish()
   console.log('note    ' + value)
   if (!isJoin) await patchSession({ note: value })
 }
@@ -321,9 +347,11 @@ async function sendAndLeave (text) {
 async function runAsk (question, { raw = false, predict = 160 } = {}) {
   if (!modelReady()) {
     const cached = await weightsCached()
-    console.log(cached
-      ? 'aside   Qwen3 0.6B Q4, already on this machine'
-      : 'aside   Qwen3 0.6B Q4. First run fetches about 382 MB into .qvac/')
+    const line = cached
+      ? 'Qwen3 0.6B Q4, already on this machine'
+      : 'Qwen3 0.6B Q4. First run fetches about 382 MB into .qvac/'
+    console.log('aside   ' + line)
+    if (ui) ui.emit({ type: 'ask-token', text: line + '\n' })
   }
   let lastPct = -1
   const content = raw
@@ -345,6 +373,7 @@ async function runAsk (question, { raw = false, predict = 160 } = {}) {
         process.stdout.write('aside   ')
       }
       process.stdout.write(token)
+      if (ui) ui.emit({ type: 'ask-token', text: token })
     },
     onProgress: (p) => {
       const pct = Math.floor((p && p.percentage) || 0)
@@ -355,6 +384,7 @@ async function runAsk (question, { raw = false, predict = 160 } = {}) {
   })
   if (!started) process.stdout.write('aside   ')
   process.stdout.write('\n')
+  if (ui) ui.emit({ type: 'ask-done' })
 }
 
 async function readMessages () {
@@ -423,9 +453,79 @@ async function patchSession (patch) {
   return run
 }
 
+function headless () {
+  return cli || sendOnce || noteOnce || untilText || askOnce
+}
+
+function setStatus (text) {
+  statusText = text
+  publish()
+}
+
+function snapshot () {
+  return {
+    role: isJoin ? 'friend' : 'you',
+    person: short(personHex),
+    address,
+    status: statusText,
+    note: lastNote,
+    lines,
+    writable: !isJoin || !!(room && room.base.writable),
+    canOpenFriend: !isJoin && !friendLaunched,
+    live: linked
+  }
+}
+
+function publish () {
+  if (ui) ui.emit({ type: 'state', state: snapshot() })
+}
+
+async function showWindow () {
+  const port = isJoin ? 4788 : 4787
+  ui = await serveWindow({
+    port,
+    getSnapshot: async () => snapshot(),
+    sendLine: async (text) => {
+      if (!text) throw new Error('Write a line first.')
+      const id = await say(text)
+      if (!id) throw new Error('Not a writer yet. Open your window first, then this one.')
+    },
+    saveNote: async (text) => {
+      if (!text) throw new Error('Write the note first.')
+      if (!pass) throw new Error('The note vault is not ready.')
+      await pass.add('desk-note', text)
+    },
+    askModel: (text) => runAsk(text),
+    openFriend: async () => {
+      if (isJoin) throw new Error('The other window is already this one.')
+      if (friendLaunched) return
+      friendLaunched = true
+      const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'join'], {
+        cwd: root,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.on('error', (err) => {
+        friendLaunched = false
+        setStatus(err.message || 'The other window did not open.')
+      })
+      child.unref()
+      setStatus('Opening the other window.')
+    },
+    quit: () => shutdown(0)
+  })
+  console.log('Window  ' + ui.url)
+  openBrowser(ui.url)
+}
+
+function stayOpen () {
+  return new Promise(() => {})
+}
+
 async function shutdown (code) {
   if (closed) return
   closed = true
+  try { if (ui) ui.close() } catch {}
   try { await closeAside() } catch {}
   try { if (pairer) await pairer.close() } catch {}
   try { if (pass && pass.close) await pass.close() } catch {}

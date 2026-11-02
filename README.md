@@ -1,8 +1,8 @@
 # Tether P2P
 
-Two terminals. One thread. No server in between.
+Two windows. One thread. No server in between.
 
-Open two terminals in this directory. The first one creates a person, a room, a note vault, and an Ethereum address. The second one joins. When the second terminal prints `Admitted. You can write.`, a line you type on one side shows up on the other. `/note` is a private record both processes can read. `/ask` answers from that thread with a model that runs on the machine you asked from.
+`npm start` opens your window. Press **Open the other window** and the friend’s window opens beside it. Type in either one. The line shows up in the other. Save note keeps a private line both windows can read. Ask this machine answers from the thread with a model that stays on this computer.
 
 Keet, Pear, and QVAC are the products this is cut from. Keet is the app with calls, video, and files. Pear is the runtime. QVAC is models on the device. The family page is [tether.io/data](https://tether.io/data/). This repository is the slice that has a `package.json` and runs on a laptop.
 
@@ -18,29 +18,25 @@ npm install
 
 The install is Corestore, Hyperswarm, HyperDHT, Autobase, Hyperbee, Autopass, `keet-identity-key`, a WDK Ethereum wallet, and `@qvac/sdk` 0.23. There is no chat API in that list.
 
-## Two terminals
-
-First terminal:
+## Two windows
 
 ```sh
-npm run friends
+npm start
 ```
 
-It prints a short person key, shaped like `abcd…wxyz`, and an `0x` address. The person key comes from a Keet identity phrase. The address comes from a different WDK seed. The process prints how many words each phrase has, and it does not print the phrases. They are stored in `tmp/friends-a/secrets.json` at mode `0600`.
+A browser window opens. It shows a short person key, shaped like `abcd…wxyz`, and an `0x` address. The person key comes from a Keet identity phrase. The address comes from a different WDK seed. Neither phrase is shown. They are stored in `tmp/friends-a/secrets.json` at mode `0600`.
 
-Second terminal, same directory:
+Press **Open the other window**. A second window opens for the friend. The first window has to stay open. It is the side the friend connects through. Wait until the friend’s window says `You can write.` Sending before that returns `Not a writer yet.`
+
+The page is served on `127.0.0.1` by the same process that holds the room. It is the window, not a backend. The lines still live in a Hypercore.
+
+Your lines sit on the right. The friend’s lines sit on the left. **Save note** stores one Autopass value. **Ask this machine** reads the thread and the note. **Quit** closes that window’s process.
+
+The same sitting still runs in a terminal if you want the log:
 
 ```sh
-npm run friends -- join
-```
-
-Wait until you see `Admitted. You can write.` Typing earlier prints `Not a writer yet.` and sends nothing. After that line, type on either side. The side that typed sees `you`. The other side sees `friend`.
-
-```text
-/note the dock at 7
-/ask what did they just say, and what does the note add
-/card
-/help
+npm run friends -- --cli
+npm run friend -- --cli
 ```
 
 `/note` stores one Autopass value at the key `desk-note`. The join paired with the invite before you typed, so the other process prints `note    the dock at 7`. The invite sits in `tmp/friends-session.json`, also mode `0600`. Treat it like a password. Anyone who has it can pair.

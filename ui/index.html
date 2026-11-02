@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tether P2P</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --water: #10262c;
+    --panel: #17343c;
+    --ink: #e7f2f4;
+    --quiet: #8eacb2;
+    --you: #f0c36a;
+    --friend: #7dcec4;
+    --paper: #f4efe4;
+    --paper-ink: #1c1914;
+    --line: rgba(232, 244, 246, 0.14);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 50% -10%, rgba(125, 206, 196, 0.16), transparent 55%),
+      var(--water);
+    color: var(--ink);
+    font-family: "Atkinson Hyperlegible", "Avenir Next", sans-serif;
+    font-size: 18px;
+  }
+  .app {
+    max-width: 760px;
+    margin: 0 auto;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 22px 18px;
+  }
+  header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
+  h1 {
+    font-family: Sora, "Avenir Next", sans-serif;
+    font-weight: 700;
+    font-size: 28px;
+    letter-spacing: -0.04em;
+    margin: 0;
+  }
+  .role { color: var(--quiet); font-size: 14px; margin-top: 4px; }
+  .wire {
+    width: min(220px, 36vw);
+    height: 14px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--you), var(--friend));
+    opacity: 0.28;
+    filter: saturate(0.4);
+  }
+  .wire.live { opacity: 1; filter: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .wire.live { animation: pulse 2.8s ease-in-out infinite; }
+  }
+  @keyframes pulse { 50% { filter: brightness(1.25); } }
+  .card {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+    padding: 14px 16px;
+    background: var(--panel);
+    border-radius: 16px;
+  }
+  .card span { display: block; color: var(--quiet); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .card strong { font-weight: 700; word-break: break-all; letter-spacing: -0.03em; }
+  .card .span { grid-column: 1 / -1; }
+  .status { margin: 14px 0; color: var(--quiet); min-height: 1.4em; }
+  .thread {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 12px;
+  }
+  .bubble {
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    line-height: 1.35;
+  }
+  .bubble.you { align-self: flex-end; background: #3d3422; color: var(--you); }
+  .bubble.friend { align-self: flex-start; background: #1c4746; color: var(--friend); }
+  .empty { color: var(--quiet); }
+  .note {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-bottom: 10px;
+    color: var(--paper);
+  }
+  .note b { color: var(--you); font-weight: 700; }
+  .aside {
+    white-space: pre-wrap;
+    background: #0c1e23;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    min-height: 0;
+  }
+  .aside:empty { display: none; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; }
+  input {
+    flex: 1 1 220px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--paper);
+    color: var(--paper-ink);
+    font: inherit;
+    padding: 12px 14px;
+  }
+  button {
+    border: 0;
+    border-radius: 12px;
+    background: var(--you);
+    color: #2a210f;
+    font: inherit;
+    font-weight: 700;
+    padding: 12px 14px;
+    cursor: pointer;
+  }
+  button.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--friend); outline-offset: 2px; }
+  .err { color: #f0b0a0; min-height: 1.2em; margin: 8px 0 0; }
+  @media (max-width: 640px) {
+    .card { grid-template-columns: 1fr; }
+    .wire { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Tether P2P</h1>
+        <div class="role" id="role">Opening your side</div>
+      </div>
+      <div class="wire" id="wire" title="The link to the other window"></div>
+    </header>
+    <div class="card">
+      <div><span>Person</span><strong id="person">…</strong></div>
+      <div class="span"><span>Address</span><strong id="address">…</strong></div>
+    </div>
+    <p class="status" id="status">Starting the private link on this computer.</p>
+    <div class="thread" id="thread"><p class="empty">The thread is empty. Write the first line.</p></div>
+    <div class="note" id="note" hidden></div>
+    <div class="aside" id="aside"></div>
+    <form id="composer">
+      <input id="text" name="text" autocomplete="off" placeholder="Write a line" aria-label="Write a line">
+      <button type="submit">Send</button>
+      <button type="button" id="noteBtn" class="quiet">Save note</button>
+      <button type="button" id="askBtn" class="quiet">Ask this machine</button>
+    </form>
+    <p class="err" id="err" role="status"></p>
+    <form id="actions">
+      <button type="button" id="friendBtn">Open the other window</button>
+      <button type="button" id="quitBtn" class="quiet">Quit</button>
+    </form>
+  </div>
+<script>
+const role = document.getElementById('role')
+const person = document.getElementById('person')
+const address = document.getElementById('address')
+const status = document.getElementById('status')
+const thread = document.getElementById('thread')
+const note = document.getElementById('note')
+const aside = document.getElementById('aside')
+const err = document.getElementById('err')
+const wire = document.getElementById('wire')
+const friendBtn = document.getElementById('friendBtn')
+const text = document.getElementById('text')
+
+function paint (state) {
+  document.title = (state.role === 'friend' ? 'Friend' : 'You') + ' · Tether P2P'
+  role.textContent = state.role === 'friend' ? 'Friend’s window' : 'Your window'
+  person.textContent = state.person || '…'
+  address.textContent = state.address || '…'
+  status.textContent = state.status || ''
+  wire.classList.toggle('live', !!state.live)
+  friendBtn.hidden = !state.canOpenFriend
+  note.hidden = !state.note
+  note.innerHTML = state.note ? '<b>Note.</b> ' + escapeHtml(state.note) : ''
+  thread.innerHTML = ''
+  if (!state.lines || !state.lines.length) {
+    const p = document.createElement('p')
+    p.className = 'empty'
+    p.textContent = state.writable
+      ? 'The thread is empty. Write the first line.'
+      : 'Waiting until this window can write.'
+    thread.appendChild(p)
+  } else {
+    for (const line of state.lines) {
+      const div = document.createElement('div')
+      div.className = 'bubble ' + (line.who === 'you' ? 'you' : 'friend')
+      div.textContent = line.text
+      thread.appendChild(div)
+    }
+    thread.scrollTop = thread.scrollHeight
+  }
+}
+
+function escapeHtml (value) {
+  return value.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
+}
+
+async function post (path, body) {
+  err.textContent = ''
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body || {})
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'That did not go through.')
+  return data
+}
+
+async function refresh () {
+  const res = await fetch('/api/state')
+  paint(await res.json())
+}
+
+document.getElementById('composer').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const value = text.value.trim()
+  if (!value) return
+  try {
+    await post('/api/message', { text: value })
+    text.value = ''
+  } catch (error) {
+    err.textContent = error.message
+  }
+})
+
+document.getElementById('noteBtn').addEventListener('click', async () => {
+  const value = text.value.trim()
+  if (!value) { err.textContent = 'Write the note first.'; return }
+  try {
+    await post('/api/note', { text: value })
+    text.value = ''
+  } catch (error) { err.textContent = error.message }
+})
+
+document.getElementById('askBtn').addEventListener('click', async () => {
+  const value = text.value.trim()
+  if (!value) { err.textContent = 'Write the question first.'; return }
+  aside.textContent = ''
+  try {
+    await post('/api/ask', { text: value })
+    text.value = ''
+  } catch (error) { err.textContent = error.message }
+})
+
+friendBtn.addEventListener('click', async () => {
+  try { await post('/api/friend') } catch (error) { err.textContent = error.message }
+})
+
+document.getElementById('quitBtn').addEventListener('click', () => post('/api/quit'))
+
+const events = new EventSource('/api/events')
+events.addEventListener('message', (event) => {
+  const data = JSON.parse(event.data)
+  if (data.type === 'state') paint(data.state)
+  if (data.type === 'ask-token') aside.textContent += data.text
+  if (data.type === 'ask-error') err.textContent = data.message
+  if (data.type === 'ask-done') refresh()
+})
+refresh()
+text.focus()
+</script>
+</body>
+</html>
