@@ -1,4 +1,4 @@
-# Desk
+# Tether P2P
 
 Two terminals. One thread. No server in between.
 
@@ -11,8 +11,8 @@ Keet, Pear, and QVAC are the products this is cut from. Keet is the app with cal
 Node.js **22.17** or newer. Check with `node -v`. npm 10.9 ships with that Node.
 
 ```sh
-git clone https://github.com/Crisvond-hnt/desk.git
-cd desk
+git clone https://github.com/Crisvond-hnt/tether-p2p-demo.git
+cd tether-p2p-demo
 npm install
 ```
 
